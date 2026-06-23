@@ -1,0 +1,239 @@
+//@version=5
+//@strategy_alert_message {{strategy.order.alert_message}}
+strategy("Renko Magnet Trend", overlay=true)
+n1 = input.float(1, title="Bricksize", minval=.01)
+q1 = input.bool(false, title="Type 1 (Def 2)")
+q2 = input.bool(false, title="Bar Colors")
+var rclose=0.0
+var ropen=0.0
+// Sources
+prclos = na(rclose[1])?math.round(close):nz(rclose[1])
+propen = na(ropen[1])?math.round(open):nz(ropen[1])
+
+// Renko (type 1 or type 2)
+type = (q1?n1:n1*2)
+rclose := close > prclos+type? prclos>propen? prclos+n1 : prclos+type :    close < prclos-type? prclos<propen? prclos-n1 : prclos-type : prclos
+ropen := rclose > prclos ? prclos>propen or q1? prclos : prclos+n1 :     rclose < prclos ? prclos<propen or q1? prclos : prclos-n1 : nz(ropen[1])
+
+// Coloring
+que=0
+que := rclose > prclos ? 1 : rclose < prclos ? -1 : nz(que[1])
+rc = que>0?color.green : que<0?color.red : na
+if(que[1]<0 and que[0]>0)
+    alert("buy cross",alert.freq_once_per_bar)
+if(que[1]>0 and que[0]<0)
+    alert("sell cross",alert.freq_once_per_bar)
+    
+bgcolor( que>0?color.rgb(42, 77, 44) : que<0?color.rgb(82, 46, 46) : na)
+// Plotting
+plot(que>0?ropen:na, title="maa", style=plot.style_circles, color=color.green, linewidth=1)
+plot(que<0?ropen:na, title="baba", style=plot.style_circles, color=color.red, linewidth=1)
+plot(que>0?rclose:na, title="maa", style=plot.style_cross, color=color.green, linewidth=1)
+plot(que<0?rclose:na, title="baba", style=plot.style_cross, color=color.red, linewidth=1)
+barcolor(q2?rc:na)
+
+
+
+//////////////////////
+
+
+
+//////////// arrows /////
+buy = que>0 and que[1]<0 //ta.crossover ( _ema1 , _ema2 )
+sell = que<0 and que[1]>0 //ta.crossunder( _ema1 , _ema2 )
+
+
+
+
+
+Stop = input.float(0.10, title='StopLoss',group = "TRADE SETTING", step=0.1) /100
+
+ProfitPerc = input.float(defval=0.1, title='Target 1',group = "TRADE SETTING", step=0.1) /100
+ProfitPerc1 = input.float(defval=0.2, title='Target 2',group = "TRADE SETTING", step=0.1) /100
+
+
+long_short = 0
+long_last = buy and (nz(long_short[1]) == 0 or nz(long_short[1]) == -1)
+short_last = sell and (nz(long_short[1]) == 0 or nz(long_short[1]) == 1)
+long_short := long_last ? 1 : short_last ? -1 : long_short[1]
+
+long_entered = false
+long_entered := long_entered[1]
+
+short_entered = false
+short_entered := short_entered[1]
+
+entry_p1 = close
+
+
+longPrice = ta.valuewhen(buy and not long_entered, entry_p1, 0)
+shortPrice = ta.valuewhen(sell and not short_entered, entry_p1, 0)
+
+// longStop = ta.valuewhen(buy and not long_entered, entry_p1, 0) - Stop
+// shortStop = ta.valuewhen(sell and not short_entered, entry_p1, 0) + Stop
+// longTake = longPrice + ProfitPerc
+// shortTake = shortPrice - ProfitPerc
+
+// //plot(l ?longTake:na)
+// //plot(s ? shortTake:na)
+
+
+
+
+// longStop1 = longPrice *(1- Stop/100)
+// shortStop1 = shortPrice *(1+ Stop/100)
+
+
+
+
+longStop = longPrice * (1 - Stop)
+shortStop = shortPrice * (1 + Stop)
+longTake = longPrice * (1 + ProfitPerc)
+shortTake = shortPrice * (1 - ProfitPerc)
+longTake1 = longPrice * (1 + ProfitPerc1)
+shortTake1 = shortPrice * (1 - ProfitPerc1)
+
+longTakeprice = longTake - longPrice
+shortTakeprice = shortPrice - shortTake
+
+
+// if longStop < longStop1
+//     longStop := longStop1
+//     longTake := longPrice * (1 + (Stop*risk)/100)
+
+// if shortStop1 > shortStop
+//     shortStop := shortStop1
+//     shortTake := shortPrice * (1 - (Stop*risk)/100)
+
+
+
+
+longBar11 = ta.barssince(long_last)
+longBar21 = longBar11 >= 1 ? true : false
+shortBar11 = ta.barssince(short_last)
+shortBar21 = shortBar11 >= 1 ? true : false
+
+longSLhit = long_short == 1 and longBar21 and low < longStop
+
+
+shortSLhit = long_short == -1 and shortBar21 and high > shortStop
+
+
+
+//plotshape(shortSLhit and not(buy and not long_entered and short_entered), style=shape.labeldown, location=location.abovebar, color=color.new(color.gray, 0), size=size.tiny, title='Stop Loss', text='Short SL', textcolor=color.new(color.white, 0))
+
+
+
+
+longTPhit = long_short == 1 and longBar21 and high > longTake
+
+shortTPhit = long_short == -1 and shortBar21 and low < shortTake
+
+long_short := (long_short == 1 or long_short == 0) and longBar21 and (longSLhit or longTPhit) ? 0 : (long_short == -1 or long_short == 0) and shortBar21 and (shortSLhit or shortTPhit) ? 0 : long_short
+
+//stp_hit = shortTPhit and count <= nt
+
+plotshape(buy and not long_entered, color = color.green , style = shape.labelup , text = "Buy" , textcolor = color.white , location = location.belowbar)
+plotshape(sell and not short_entered, color = color.red , style = shape.labeldown , text = "Sell" , textcolor = color.white , location = location.abovebar)
+
+
+
+
+plotshape(longTPhit, style=shape.labeldown, location=location.abovebar, color=color.new(color.navy, 0), size=size.tiny, title='Target', text='Long TP', textcolor=color.new(color.white, 0))
+plotshape(shortTPhit, style=shape.labelup, location=location.belowbar, color=color.new(color.navy, 0), size=size.tiny, title='Target', text='Short TP', textcolor=color.new(color.white, 0))
+plotshape(longSLhit, style=shape.labelup, location=location.belowbar, color=color.new(color.gray, 0), size=size.tiny, title='Stop Loss', text='Long SL', textcolor=color.new(color.white, 0))
+plotshape(shortSLhit, style=shape.labeldown, location=location.abovebar, color=color.new(color.gray, 0), size=size.tiny, title='Stop Loss', text='Short SL', textcolor=color.new(color.white, 0))
+
+
+
+
+plot(long_short == 1 ? longTake : na, style=plot.style_linebr, color=color.new(color.navy, 0), linewidth=1, title='Long Fixed TP')
+plot(long_short == -1 ? shortTake : na, style=plot.style_linebr, color=color.new(color.navy, 0), linewidth=1, title='Short Fixed TP')
+
+// plot(strategy.position_size > 0 ? longTake1 : na, style=plot.style_linebr, color=color.new(color.navy, 0), linewidth=1, title='Long Fixed TP')
+// plot(strategy.position_size < 0  ? shortTake1 : na, style=plot.style_linebr, color=color.new(color.navy, 0), linewidth=1, title='Short Fixed TP')
+
+ts = input("XAUUSD")
+qn = input(0.01)
+qn1 = qn
+
+
+qn := nz(qn[1])
+
+
+qty = qn/2
+
+if (long_entered[1] and sell) or (short_entered[1] and buy) //or shortSLhit or longSLhit
+    qn := qn + qn1
+    qn
+rev = input(10.0)
+
+
+if longTPhit or shortTPhit or (qn > rev)
+    qn := qn1
+    qn
+
+
+
+buy_alert ='{"type": "buy","symbol": "'+ts+'","volume":'+str.tostring(qn)+',"closeprevious":true,"price":"'+str.tostring(close)+'"}'
+sell_alert = '{"type": "sell","symbol": "'+ts+'","volume":'+str.tostring(qn)+',"closeprevious":true,"price":"'+str.tostring(close)+'"}'
+
+
+//{"type": "buy","symbol": "BTCUSDm","volume": 0.2,"sl":10000,"tp":10000,"closeprevious":true,"price":"{{close}}"}
+
+
+exit_alert = '{"symbol": "'+ts+'","closeprevious":true,"price":"'+str.tostring(close)+'"}'
+
+
+// if strategy.position_size == qn/2 and strategy.position_size > 0
+//     longStop := longPrice
+
+
+// if strategy.position_size == -(qn/2) and strategy.position_size < 0
+//     shortStop := shortPrice
+
+plot(strategy.position_size > 0 ? longStop : na, style=plot.style_linebr, color=color.new(color.red, 0), linewidth=1, title='Long Fixed SL')
+plot(strategy.position_size < 0 ? shortStop : na, style=plot.style_linebr, color=color.new(color.red, 0), linewidth=1, title='Short Fixed SL')
+
+if buy and not long_entered
+    strategy.entry('buy', strategy.long,qty = qn,alert_message = buy_alert)
+    
+strategy.exit('exit 1', 'buy', limit=longTake, stop=longStop,qty = qn,disable_alert = true)
+//strategy.exit('exit 2', 'buy', limit=longTake1, stop=longStop,qty = qn/2,alert_message = exit_alert)
+
+
+if sell and not short_entered
+    strategy.entry('sell', strategy.short,qty = qn,alert_message = sell_alert)
+    
+strategy.exit('exit 1', 'sell', limit=shortTake, stop=shortStop,qty = qn,disable_alert = true)
+//strategy.exit('exit 2', 'sell', limit=shortTake1, stop=shortStop,qty = qn/2,alert_message = exit_alert)
+
+
+
+
+
+
+
+
+if (buy)  and not long_entered
+    long_entered := true
+    short_entered := false
+    short_entered
+if (sell) and not short_entered
+    short_entered := true
+    long_entered := false
+    long_entered
+
+
+if longSLhit or longTPhit
+    long_entered := false
+    long_entered
+
+if shortSLhit or shortTPhit
+    short_entered := false
+    short_entered
+
+
+
+
+
